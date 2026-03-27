@@ -1,51 +1,53 @@
 ```
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
+# Dependencies
+node_modules/
 venv/
 .venv/
-.ENV
-.ENV.*
-.venv/
-.venv.*
-.python-version
-.python-history
-.pytest_cache/
-.mypy_cache/
-.coverage
-coverage/
-
-# Build artifacts
-build/
-dist/
+__pycache__/
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
+target/
+.gradle/
 
-# Logs
-*.log
-
-# Environment variables
+# Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# IDE specific
-.vscode/
-.idea/
+# Logs and temporary files
+*.log
+*.tmp
 *.swp
 *.swo
-*.tmp
 
-# OS generated files
+# Editor/IDE files
+.vscode/
+.idea/
+*.pyc
+*.class
+*.o
+*.obj
+*.out
+
+# OS files
 .DS_Store
 Thumbs.db
 
-# Testing
-.coverage
+# Coverage
+coverage/
 htmlcov/
+.coverage
+
+# Docker
+.dockerenv
+!Dockerfile
+!docker-compose.yml
+
+# Deployment specific
+deployment/requirements.txt
+!deployment/Dockerfile
+!deployment/docker-compose.yml
+!deployment/nginx.conf
+!deployment/*.sh
 ```
