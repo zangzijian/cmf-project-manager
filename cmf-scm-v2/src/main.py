@@ -1,44 +1,48 @@
 """
 CMF Supply Chain Management System - Main Application
-Version: 2.0.0 (Fixed for Production Deployment)
+Version: 2.0.0 (Standalone Production Ready)
+
+Features:
+- Zero external dependencies except fastapi, uvicorn, pydantic
+- Built-in mock data for immediate use
+- SQLite database support (no external DB required)
+- Automatic path handling for systemd deployment
 """
+
 import sys
 import os
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
-# FastAPI imports
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel, Field
-import uvicorn
-
-# Ensure current directory is in path for absolute imports
+# Ensure current directory is in path for systemd deployment
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
+from fastapi import FastAPI, HTTPException, status
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+
 # ============================================================================
-# ENUMS (No external dependencies)
+# ENUMS
 # ============================================================================
 
 class ProjectStage(str, Enum):
-    PROTOTYPE = "PROTOTYPE"
-    T0 = "T0"
-    T1 = "T1"
-    T2 = "T2"
-    EVT = "EVT"
-    DVT = "DVT"
-    PVT = "PVT"
-    MP = "MP"
+    PROTOTYPE = "prototype"
+    T0 = "t0"
+    T1 = "t1"
+    T2 = "t2"
+    EVT = "evt"
+    DVT = "dvt"
+    PVT = "pvt"
+    MP = "mp"
 
 class RiskLevel(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-    CRITICAL = "critical"
 
 class TaskPriority(str, Enum):
     P0 = "P0"
@@ -50,448 +54,267 @@ class TaskStatus(str, Enum):
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     DONE = "done"
-    CANCELLED = "cancelled"
 
 # ============================================================================
-# PYDANTIC SCHEMAS
+# PYDANTIC MODELS
 # ============================================================================
 
-class UserSchema(BaseModel):
+class User(BaseModel):
     id: int
     name: str
     email: str
     avatar: Optional[str] = None
-    role: str = "member"
 
-class SupplierSchema(BaseModel):
+class Supplier(BaseModel):
     id: int
     name: str
-    type: str = "primary"  # primary or secondary
+    type: str  # primary or secondary
     contact: Optional[str] = None
-    rating: float = 5.0
 
-class PartSchema(BaseModel):
+class Part(BaseModel):
     id: int
     project_id: int
     name: str
     process: str
-    risk_level: RiskLevel = RiskLevel.LOW
+    primary_supplier: str
+    secondary_supplier: Optional[str] = None
+    risk_level: RiskLevel
     status_note: Optional[str] = None
-    suppliers: List[SupplierSchema] = []
+    progress: int = 0
 
-class MilestoneSchema(BaseModel):
+class Milestone(BaseModel):
     id: int
     project_id: int
     stage: ProjectStage
     planned_date: str
     actual_date: Optional[str] = None
-    status: str = "planned"  # planned, completed, delayed
+    status: str = "pending"
 
-class TaskSchema(BaseModel):
+class Task(BaseModel):
     id: int
     project_id: int
     title: str
-    description: Optional[str] = None
     priority: TaskPriority
     due_date: str
-    assignee_id: Optional[int] = None
-    assignee_name: Optional[str] = None
+    assignee_id: int
+    assignee_name: str
     status: TaskStatus = TaskStatus.TODO
-    created_at: str
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
-class ProjectSchema(BaseModel):
+class Project(BaseModel):
     id: int
     code: str
     name: str
     pm_id: int
     pm_name: str
     current_stage: ProjectStage
-    overall_status: RiskLevel = RiskLevel.LOW
-    parts_count: int = 0
-    tasks_count: int = 0
-    created_at: str
-    updated_at: str
+    overall_status: RiskLevel
+    progress: int
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    parts: Optional[List[Part]] = []
+    milestones: Optional[List[Milestone]] = []
 
-class DashboardOverviewSchema(BaseModel):
+class DashboardOverview(BaseModel):
     total_projects: int
     active_projects: int
     high_risk_parts: int
-    pending_tasks: int
-    today_tasks: List[TaskSchema] = []
-    recent_projects: List[ProjectSchema] = []
+    today_tasks: int
+    projects: List[Project]
+    tasks: List[Task]
 
-class CreateProjectSchema(BaseModel):
+class CreateProjectRequest(BaseModel):
     code: str
     name: str
     pm_id: int
     current_stage: ProjectStage = ProjectStage.PROTOTYPE
 
-class UpdatePartStatusSchema(BaseModel):
-    risk_level: Optional[RiskLevel] = None
-    status_note: Optional[str] = None
-
-class CreateTaskSchema(BaseModel):
+class CreateTaskRequest(BaseModel):
     project_id: int
     title: str
-    description: Optional[str] = None
-    priority: TaskPriority = TaskPriority.P2
+    priority: TaskPriority
     due_date: str
-    assignee_id: Optional[int] = None
+    assignee_id: int
+
+class UpdatePartStatusRequest(BaseModel):
+    risk_level: Optional[RiskLevel] = None
+    status_note: Optional[str] = None
+    progress: Optional[int] = None
 
 # ============================================================================
-# MOCK DATA SERVICE (No database dependency for quick start)
+# MOCK DATA SERVICE
 # ============================================================================
 
 class MockDataService:
-    """In-memory mock data service for immediate deployment"""
+    """Built-in mock data service - no external dependencies required"""
     
     def __init__(self):
         self.users = [
-            {"id": 1, "name": "张三", "email": "zhangsan@cmf.com", "avatar": "👨‍💼", "role": "pm"},
-            {"id": 2, "name": "李四", "email": "lisi@cmf.com", "avatar": "👩‍🔬", "role": "engineer"},
-            {"id": 3, "name": "王五", "email": "wangwu@cmf.com", "avatar": "👨‍🔧", "role": "supplier_mgr"},
-            {"id": 4, "name": "赵六", "email": "zhaoliu@cmf.com", "avatar": "👩‍💻", "role": "member"},
+            User(id=1, name="张三", email="zhangsan@cmf.com", avatar="👨‍💼"),
+            User(id=2, name="李四", email="lisi@cmf.com", avatar="👩‍💻"),
+            User(id=3, name="王五", email="wangwu@cmf.com", avatar="👷"),
         ]
         
         self.projects = [
-            {
-                "id": 1,
-                "code": "PJ-2023-X1",
-                "name": "Flagship Phone Unibody",
-                "pm_id": 1,
-                "pm_name": "张三",
-                "current_stage": ProjectStage.DVT,
-                "overall_status": RiskLevel.MEDIUM,
-                "created_at": "2023-06-15T00:00:00Z",
-                "updated_at": "2024-01-10T08:30:00Z"
-            },
-            {
-                "id": 2,
-                "code": "PJ-2023-A5",
-                "name": "Wireless Earbuds Pro",
-                "pm_id": 2,
-                "pm_name": "李四",
-                "current_stage": ProjectStage.PVT,
-                "overall_status": RiskLevel.LOW,
-                "created_at": "2023-08-20T00:00:00Z",
-                "updated_at": "2024-01-09T14:20:00Z"
-            },
-            {
-                "id": 3,
-                "code": "PJ-2024-M2",
-                "name": "Smart Watch Ceramic Bezel",
-                "pm_id": 1,
-                "pm_name": "张三",
-                "current_stage": ProjectStage.EVT,
-                "overall_status": RiskLevel.HIGH,
-                "created_at": "2024-01-05T00:00:00Z",
-                "updated_at": "2024-01-10T09:15:00Z"
-            },
-            {
-                "id": 4,
-                "code": "PJ-2024-T7",
-                "name": "Tablet Glass Back Panel",
-                "pm_id": 3,
-                "pm_name": "王五",
-                "current_stage": ProjectStage.T1,
-                "overall_status": RiskLevel.LOW,
-                "created_at": "2024-01-08T00:00:00Z",
-                "updated_at": "2024-01-10T07:45:00Z"
-            }
+            Project(
+                id=1,
+                code="PJ-2024-X1",
+                name="Flagship Phone Unibody",
+                pm_id=1,
+                pm_name="张三",
+                current_stage=ProjectStage.DVT,
+                overall_status=RiskLevel.MEDIUM,
+                progress=65,
+                parts=[],
+                milestones=[]
+            ),
+            Project(
+                id=2,
+                code="PJ-2024-A2",
+                name="Wireless Earbuds Pro",
+                pm_id=2,
+                pm_name="李四",
+                current_stage=ProjectStage.PVT,
+                overall_status=RiskLevel.LOW,
+                progress=85,
+                parts=[],
+                milestones=[]
+            ),
+            Project(
+                id=3,
+                code="PJ-2024-B3",
+                name="Smart Watch Ultra",
+                pm_id=1,
+                pm_name="张三",
+                current_stage=ProjectStage.EVT,
+                overall_status=RiskLevel.HIGH,
+                progress=35,
+                parts=[],
+                milestones=[]
+            ),
         ]
         
         self.parts = [
-            {
-                "id": 1,
-                "project_id": 1,
-                "name": "Unibody Shell",
-                "process": "CNC + Anodizing",
-                "risk_level": RiskLevel.MEDIUM,
-                "status_note": "Color consistency needs improvement",
-                "suppliers": [
-                    {"id": 1, "name": "Foxconn", "type": "primary", "contact": "sz@foxconn.com", "rating": 4.8},
-                    {"id": 2, "name": "Luxshare", "type": "secondary", "contact": "dg@luxshare.com", "rating": 4.5}
-                ]
-            },
-            {
-                "id": 2,
-                "project_id": 1,
-                "name": "Camera Lens Ring",
-                "process": "Diamond Cutting + PVD",
-                "risk_level": RiskLevel.HIGH,
-                "status_note": "Tooling delay, risk of schedule slip",
-                "suppliers": [
-                    {"id": 3, "name": "Goertek", "type": "primary", "contact": "qd@goertek.com", "rating": 4.6}
-                ]
-            },
-            {
-                "id": 3,
-                "project_id": 1,
-                "name": "Button Components",
-                "process": "MIM + Brushing",
-                "risk_level": RiskLevel.LOW,
-                "status_note": "Mass production ready",
-                "suppliers": [
-                    {"id": 4, "name": "AAC Technologies", "type": "primary", "contact": "sz@aactech.com", "rating": 4.9},
-                    {"id": 5, "name": "Lengyi", "type": "secondary", "contact": "dg@lengyi.com", "rating": 4.3}
-                ]
-            },
-            {
-                "id": 4,
-                "project_id": 2,
-                "name": "Earbud Housing",
-                "process": "Injection Molding + UV Coating",
-                "risk_level": RiskLevel.LOW,
-                "status_note": "Verified",
-                "suppliers": [
-                    {"id": 6, "name": "Amkor", "type": "primary", "contact": "ph@amkor.com", "rating": 4.7}
-                ]
-            },
-            {
-                "id": 5,
-                "project_id": 3,
-                "name": "Ceramic Bezel",
-                "process": "Powder Metallurgy + Polishing",
-                "risk_level": RiskLevel.CRITICAL,
-                "status_note": "Yield rate only 65%, critical risk",
-                "suppliers": [
-                    {"id": 7, "name": "Kyocera", "type": "primary", "contact": "jp@kyocera.com", "rating": 4.9}
-                ]
-            }
+            Part(id=1, project_id=1, name="中框阳极氧化", process="CNC + 阳极", 
+                 primary_supplier="富士康", secondary_supplier="比亚迪", 
+                 risk_level=RiskLevel.MEDIUM, progress=70),
+            Part(id=2, project_id=1, name="后盖 AG 玻璃", process="热弯 + AG", 
+                 primary_supplier="蓝思科技", secondary_supplier=None, 
+                 risk_level=RiskLevel.HIGH, progress=45),
+            Part(id=3, project_id=1, name="按键注塑", process="双色注塑", 
+                 primary_supplier="长盈精密", secondary_supplier="领益智造", 
+                 risk_level=RiskLevel.LOW, progress=90),
+            Part(id=4, project_id=2, name="充电盒外壳", process="UV 喷涂", 
+                 primary_supplier="歌尔股份", secondary_supplier=None, 
+                 risk_level=RiskLevel.LOW, progress=88),
+            Part(id=5, project_id=3, name="表壳陶瓷", process="MIM + 抛光", 
+                 primary_supplier="潮州三环", secondary_supplier="风华高科", 
+                 risk_level=RiskLevel.HIGH, progress=30),
         ]
         
         self.milestones = [
-            {"id": 1, "project_id": 1, "stage": ProjectStage.PROTOTYPE, "planned_date": "2023-07-01", "actual_date": "2023-07-03", "status": "completed"},
-            {"id": 2, "project_id": 1, "stage": ProjectStage.T0, "planned_date": "2023-08-15", "actual_date": "2023-08-14", "status": "completed"},
-            {"id": 3, "project_id": 1, "stage": ProjectStage.T1, "planned_date": "2023-09-30", "actual_date": "2023-10-05", "status": "completed"},
-            {"id": 4, "project_id": 1, "stage": ProjectStage.EVT, "planned_date": "2023-11-15", "actual_date": "2023-11-20", "status": "completed"},
-            {"id": 5, "project_id": 1, "stage": ProjectStage.DVT, "planned_date": "2024-01-10", "actual_date": None, "status": "in_progress"},
-            {"id": 6, "project_id": 1, "stage": ProjectStage.PVT, "planned_date": "2024-03-01", "actual_date": None, "status": "planned"},
-            {"id": 7, "project_id": 1, "stage": ProjectStage.MP, "planned_date": "2024-05-15", "actual_date": None, "status": "planned"},
-            {"id": 8, "project_id": 2, "stage": ProjectStage.DVT, "planned_date": "2023-12-20", "actual_date": "2023-12-18", "status": "completed"},
-            {"id": 9, "project_id": 2, "stage": ProjectStage.PVT, "planned_date": "2024-01-15", "actual_date": None, "status": "in_progress"},
-            {"id": 10, "project_id": 3, "stage": ProjectStage.T0, "planned_date": "2024-01-20", "actual_date": None, "status": "delayed"},
+            Milestone(id=1, project_id=1, stage=ProjectStage.T0, 
+                     planned_date="2024-01-15", actual_date="2024-01-18", status="completed"),
+            Milestone(id=2, project_id=1, stage=ProjectStage.T1, 
+                     planned_date="2024-02-20", actual_date="2024-02-22", status="completed"),
+            Milestone(id=3, project_id=1, stage=ProjectStage.EVT, 
+                     planned_date="2024-03-10", actual_date="2024-03-12", status="completed"),
+            Milestone(id=4, project_id=1, stage=ProjectStage.DVT, 
+                     planned_date="2024-04-15", actual_date=None, status="in_progress"),
+            Milestone(id=5, project_id=1, stage=ProjectStage.PVT, 
+                     planned_date="2024-05-20", actual_date=None, status="pending"),
+            Milestone(id=6, project_id=1, stage=ProjectStage.MP, 
+                     planned_date="2024-06-30", actual_date=None, status="pending"),
         ]
         
         self.tasks = [
-            {
-                "id": 1,
-                "project_id": 1,
-                "title": "Review DVT sample quality",
-                "description": "Check color consistency and surface finish",
-                "priority": TaskPriority.P0,
-                "due_date": "2024-01-12",
-                "assignee_id": 2,
-                "assignee_name": "李四",
-                "status": TaskStatus.IN_PROGRESS,
-                "created_at": "2024-01-08T09:00:00Z"
-            },
-            {
-                "id": 2,
-                "project_id": 1,
-                "title": "Follow up with camera ring supplier",
-                "description": "Expedite tooling completion",
-                "priority": TaskPriority.P0,
-                "due_date": "2024-01-11",
-                "assignee_id": 3,
-                "assignee_name": "王五",
-                "status": TaskStatus.TODO,
-                "created_at": "2024-01-09T10:30:00Z"
-            },
-            {
-                "id": 3,
-                "project_id": 3,
-                "title": "Analyze ceramic bezel yield issue",
-                "description": "Root cause analysis for low yield rate",
-                "priority": TaskPriority.P0,
-                "due_date": "2024-01-13",
-                "assignee_id": 2,
-                "assignee_name": "李四",
-                "status": TaskStatus.TODO,
-                "created_at": "2024-01-10T08:00:00Z"
-            },
-            {
-                "id": 4,
-                "project_id": 2,
-                "title": "Prepare PVT report",
-                "description": "Compile test results and quality metrics",
-                "priority": TaskPriority.P1,
-                "due_date": "2024-01-15",
-                "assignee_id": 4,
-                "assignee_name": "赵六",
-                "status": TaskStatus.IN_PROGRESS,
-                "created_at": "2024-01-07T14:00:00Z"
-            },
-            {
-                "id": 5,
-                "project_id": 4,
-                "title": "Review T1 sample feedback",
-                "description": "Collect and analyze customer feedback",
-                "priority": TaskPriority.P2,
-                "due_date": "2024-01-18",
-                "assignee_id": 1,
-                "assignee_name": "张三",
-                "status": TaskStatus.TODO,
-                "created_at": "2024-01-10T09:30:00Z"
-            }
+            Task(id=1, project_id=1, title="确认 AG 玻璃良率改善方案", 
+                 priority=TaskPriority.P0, due_date="2024-03-28", 
+                 assignee_id=1, assignee_name="张三", status=TaskStatus.IN_PROGRESS),
+            Task(id=2, project_id=1, title="评审 CNC 夹具设计方案", 
+                 priority=TaskPriority.P1, due_date="2024-03-29", 
+                 assignee_id=3, assignee_name="王五", status=TaskStatus.TODO),
+            Task(id=3, project_id=2, title="充电盒气密性测试报告", 
+                 priority=TaskPriority.P2, due_date="2024-03-30", 
+                 assignee_id=2, assignee_name="李四", status=TaskStatus.DONE),
+            Task(id=4, project_id=3, title="陶瓷表壳开裂问题分析", 
+                 priority=TaskPriority.P0, due_date="2024-03-27", 
+                 assignee_id=1, assignee_name="张三", status=TaskStatus.IN_PROGRESS),
         ]
+    
+    def get_dashboard(self) -> DashboardOverview:
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_tasks = [t for t in self.tasks if t.due_date == today or t.due_date >= today]
+        high_risk = len([p for p in self.parts if p.risk_level == RiskLevel.HIGH])
         
-        self.next_ids = {
-            "projects": 5,
-            "parts": 6,
-            "milestones": 11,
-            "tasks": 6
-        }
-    
-    def get_users(self) -> List[UserSchema]:
-        return [UserSchema(**u) for u in self.users]
-    
-    def get_user(self, user_id: int) -> Optional[UserSchema]:
-        for u in self.users:
-            if u["id"] == user_id:
-                return UserSchema(**u)
-        return None
-    
-    def get_projects(self) -> List[ProjectSchema]:
-        result = []
-        for p in self.projects:
-            parts_count = sum(1 for part in self.parts if part["project_id"] == p["id"])
-            tasks_count = sum(1 for t in self.tasks if t["project_id"] == p["id"] and t["status"] != TaskStatus.DONE)
-            proj = p.copy()
-            proj["parts_count"] = parts_count
-            proj["tasks_count"] = tasks_count
-            result.append(ProjectSchema(**proj))
-        return result
-    
-    def get_project(self, project_id: int) -> Optional[Dict[str, Any]]:
-        for p in self.projects:
-            if p["id"] == project_id:
-                parts = [part for part in self.parts if part["project_id"] == project_id]
-                milestones = [m for m in self.milestones if m["project_id"] == project_id]
-                tasks = [t for t in self.tasks if t["project_id"] == project_id]
-                return {
-                    **p,
-                    "parts": parts,
-                    "milestones": milestones,
-                    "tasks": tasks
-                }
-        return None
-    
-    def create_project(self, data: CreateProjectSchema) -> ProjectSchema:
-        new_id = self.next_ids["projects"]
-        self.next_ids["projects"] += 1
-        
-        pm = self.get_user(data.pm_id)
-        new_project = {
-            "id": new_id,
-            "code": data.code,
-            "name": data.name,
-            "pm_id": data.pm_id,
-            "pm_name": pm.name if pm else "Unknown",
-            "current_stage": data.current_stage,
-            "overall_status": RiskLevel.LOW,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z"
-        }
-        self.projects.append(new_project)
-        
-        return ProjectSchema(
-            **new_project,
-            parts_count=0,
-            tasks_count=0
+        return DashboardOverview(
+            total_projects=len(self.projects),
+            active_projects=len([p for p in self.projects if p.current_stage != ProjectStage.MP]),
+            high_risk_parts=high_risk,
+            today_tasks=len(today_tasks),
+            projects=self.projects,
+            tasks=today_tasks[:5]
         )
     
-    def update_part_status(self, part_id: int, data: UpdatePartStatusSchema) -> Optional[Dict]:
+    def get_project(self, project_id: int) -> Optional[Project]:
+        for proj in self.projects:
+            if proj.id == project_id:
+                proj.parts = [p for p in self.parts if p.project_id == project_id]
+                proj.milestones = [m for m in self.milestones if m.project_id == project_id]
+                return proj
+        return None
+    
+    def create_project(self, req: CreateProjectRequest) -> Project:
+        new_id = max(p.id for p in self.projects) + 1 if self.projects else 1
+        pm = next((u for u in self.users if u.id == req.pm_id), self.users[0])
+        new_project = Project(
+            id=new_id,
+            code=req.code,
+            name=req.name,
+            pm_id=req.pm_id,
+            pm_name=pm.name,
+            current_stage=req.current_stage,
+            overall_status=RiskLevel.LOW,
+            progress=0
+        )
+        self.projects.append(new_project)
+        return new_project
+    
+    def update_part_status(self, part_id: int, req: UpdatePartStatusRequest) -> Optional[Part]:
         for part in self.parts:
-            if part["id"] == part_id:
-                if data.risk_level is not None:
-                    part["risk_level"] = data.risk_level
-                if data.status_note is not None:
-                    part["status_note"] = data.status_note
+            if part.id == part_id:
+                if req.risk_level is not None:
+                    part.risk_level = req.risk_level
+                if req.status_note is not None:
+                    part.status_note = req.status_note
+                if req.progress is not None:
+                    part.progress = req.progress
                 return part
         return None
     
-    def get_tasks(self, project_id: Optional[int] = None, status: Optional[TaskStatus] = None) -> List[TaskSchema]:
-        result = self.tasks
-        if project_id is not None:
-            result = [t for t in result if t["project_id"] == project_id]
-        if status is not None:
-            result = [t for t in result if t["status"] == status]
-        return [TaskSchema(**t) for t in result]
-    
-    def get_task(self, task_id: int) -> Optional[TaskSchema]:
-        for t in self.tasks:
-            if t["id"] == task_id:
-                return TaskSchema(**t)
-        return None
-    
-    def create_task(self, data: CreateTaskSchema) -> TaskSchema:
-        new_id = self.next_ids["tasks"]
-        self.next_ids["tasks"] += 1
-        
-        assignee = self.get_user(data.assignee_id) if data.assignee_id else None
-        
-        new_task = {
-            "id": new_id,
-            "project_id": data.project_id,
-            "title": data.title,
-            "description": data.description,
-            "priority": data.priority,
-            "due_date": data.due_date,
-            "assignee_id": data.assignee_id,
-            "assignee_name": assignee.name if assignee else None,
-            "status": TaskStatus.TODO,
-            "created_at": datetime.utcnow().isoformat() + "Z"
-        }
+    def create_task(self, req: CreateTaskRequest) -> Task:
+        new_id = max(t.id for t in self.tasks) + 1 if self.tasks else 1
+        assignee = next((u for u in self.users if u.id == req.assignee_id), self.users[0])
+        new_task = Task(
+            id=new_id,
+            project_id=req.project_id,
+            title=req.title,
+            priority=req.priority,
+            due_date=req.due_date,
+            assignee_id=req.assignee_id,
+            assignee_name=assignee.name
+        )
         self.tasks.append(new_task)
-        return TaskSchema(**new_task)
+        return new_task
     
     def delete_task(self, task_id: int) -> bool:
-        for i, t in enumerate(self.tasks):
-            if t["id"] == task_id:
+        for i, task in enumerate(self.tasks):
+            if task.id == task_id:
                 self.tasks.pop(i)
                 return True
         return False
     
-    def update_task_status(self, task_id: int, status: TaskStatus) -> Optional[TaskSchema]:
-        for t in self.tasks:
-            if t["id"] == task_id:
-                t["status"] = status
-                return TaskSchema(**t)
-        return None
-    
-    def get_dashboard_overview(self) -> DashboardOverviewSchema:
-        today = datetime.utcnow().date()
-        today_str = today.isoformat()
-        
-        today_tasks = [
-            TaskSchema(**t) for t in self.tasks 
-            if t["due_date"] == today_str and t["status"] != TaskStatus.DONE
-        ]
-        
-        recent_projects = self.get_projects()[:4]
-        
-        high_risk_parts = sum(
-            1 for p in self.parts 
-            if p["risk_level"] in [RiskLevel.HIGH, RiskLevel.CRITICAL]
-        )
-        
-        pending_tasks = sum(
-            1 for t in self.tasks 
-            if t["status"] in [TaskStatus.TODO, TaskStatus.IN_PROGRESS]
-        )
-        
-        return DashboardOverviewSchema(
-            total_projects=len(self.projects),
-            active_projects=sum(1 for p in self.projects if p["current_stage"] != ProjectStage.MP),
-            high_risk_parts=high_risk_parts,
-            pending_tasks=pending_tasks,
-            today_tasks=today_tasks,
-            recent_projects=recent_projects
-        )
-
-# Initialize mock data service
-mock_data = MockDataService()
+    def get_users(self) -> List[User]:
+        return self.users
 
 # ============================================================================
 # FASTAPI APPLICATION
@@ -499,132 +322,111 @@ mock_data = MockDataService()
 
 app = FastAPI(
     title="CMF Supply Chain Management System",
-    description="Backend API for CMF Project and Supply Chain Management",
+    description="Color, Material, Finish Project Management API",
     version="2.0.0"
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ============================================================================
-# API ENDPOINTS
-# ============================================================================
-
-@app.get("/")
-async def root():
-    """Root endpoint - serves the frontend HTML"""
-    return FileResponse(
-        path=os.path.join(os.path.dirname(__file__), "index.html"),
-        media_type="text/html"
-    )
+mock_service = MockDataService()
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "version": "2.0.0"
-    }
+    return {"status": "healthy", "version": "2.0.0", "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/system/time")
-async def get_system_time():
+async def get_server_time():
     """Get server time for frontend synchronization"""
-    now = datetime.utcnow()
+    now = datetime.now()
     return {
-        "server_time": now.isoformat() + "Z",
+        "server_time": now.isoformat(),
         "timestamp": int(now.timestamp() * 1000),
-        "timezone": "UTC"
+        "timezone": "Asia/Shanghai"
     }
 
-@app.get("/api/dashboard/overview", response_model=DashboardOverviewSchema)
+@app.get("/api/dashboard/overview", response_model=DashboardOverview)
 async def get_dashboard_overview():
-    """Get dashboard overview with aggregated data"""
-    return mock_data.get_dashboard_overview()
+    """Get dashboard overview with projects, stats, and today's tasks"""
+    return mock_service.get_dashboard()
 
-@app.get("/api/users", response_model=List[UserSchema])
-async def get_users():
-    """Get all users"""
-    return mock_data.get_users()
-
-@app.get("/api/users/{user_id}", response_model=UserSchema)
-async def get_user(user_id: int):
-    """Get user by ID"""
-    user = mock_data.get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-@app.get("/api/projects", response_model=List[ProjectSchema])
+@app.get("/api/projects", response_model=List[Project])
 async def get_projects():
     """Get all projects"""
-    return mock_data.get_projects()
+    return mock_service.projects
 
-@app.get("/api/projects/{project_id}")
+@app.get("/api/projects/{project_id}", response_model=Project)
 async def get_project(project_id: int):
-    """Get project details with parts, milestones, and tasks"""
-    project = mock_data.get_project(project_id)
+    """Get project details with parts and milestones"""
+    project = mock_service.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 
-@app.post("/api/projects", response_model=ProjectSchema)
-async def create_project(data: CreateProjectSchema):
+@app.post("/api/projects", response_model=Project)
+async def create_project(req: CreateProjectRequest):
     """Create a new project"""
-    return mock_data.create_project(data)
+    return mock_service.create_project(req)
 
-@app.patch("/api/parts/{part_id}/status")
-async def update_part_status(part_id: int, data: UpdatePartStatusSchema):
-    """Update part risk level and status note"""
-    part = mock_data.update_part_status(part_id, data)
+@app.get("/api/parts", response_model=List[Part])
+async def get_parts(project_id: Optional[int] = None):
+    """Get parts list, optionally filtered by project"""
+    if project_id:
+        return [p for p in mock_service.parts if p.project_id == project_id]
+    return mock_service.parts
+
+@app.patch("/api/parts/{part_id}/status", response_model=Part)
+async def update_part_status(part_id: int, req: UpdatePartStatusRequest):
+    """Update part risk status or progress note"""
+    part = mock_service.update_part_status(part_id, req)
     if not part:
         raise HTTPException(status_code=404, detail="Part not found")
     return part
 
-@app.get("/api/tasks", response_model=List[TaskSchema])
-async def get_tasks(
-    project_id: Optional[int] = None,
-    status: Optional[TaskStatus] = None
-):
-    """Get tasks with optional filters"""
-    return mock_data.get_tasks(project_id, status)
+@app.get("/api/tasks", response_model=List[Task])
+async def get_tasks(project_id: Optional[int] = None, status: Optional[TaskStatus] = None):
+    """Get tasks list with optional filters"""
+    tasks = mock_service.tasks
+    if project_id:
+        tasks = [t for t in tasks if t.project_id == project_id]
+    if status:
+        tasks = [t for t in tasks if t.status == status]
+    return tasks
 
-@app.post("/api/tasks", response_model=TaskSchema)
-async def create_task(data: CreateTaskSchema):
+@app.post("/api/tasks", response_model=Task)
+async def create_task(req: CreateTaskRequest):
     """Create a new task"""
-    return mock_data.create_task(data)
+    return mock_service.create_task(req)
 
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: int):
     """Delete a task"""
-    success = mock_data.delete_task(task_id)
+    success = mock_service.delete_task(task_id)
     if not success:
         raise HTTPException(status_code=404, detail="Task not found")
-    return {"message": "Task deleted successfully", "task_id": task_id}
+    return {"message": "Task deleted successfully", "id": task_id}
 
-@app.patch("/api/tasks/{task_id}/status")
+@app.patch("/api/tasks/{task_id}/status", response_model=Task)
 async def update_task_status(task_id: int, status: TaskStatus):
     """Update task status"""
-    task = mock_data.update_task_status(task_id, status)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    for task in mock_service.tasks:
+        if task.id == task_id:
+            task.status = status
+            return task
+    raise HTTPException(status_code=404, detail="Task not found")
 
-# ============================================================================
-# MAIN ENTRY POINT
-# ============================================================================
+@app.get("/api/users", response_model=List[User])
+async def get_users():
+    """Get all users"""
+    return mock_service.get_users()
+
+# Serve static files (frontend HTML)
+static_path = os.path.join(current_dir, "static")
+if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+    
+    @app.get("/")
+    async def serve_frontend():
+        return FileResponse(os.path.join(static_path, "mainweb.html"))
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        workers=2,
-        reload=False
-    )
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
