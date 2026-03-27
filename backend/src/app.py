@@ -6,8 +6,6 @@ CMF 供应链项目管理系统 - FastAPI 单文件应用 (v2.0)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from enum import Enum
@@ -648,35 +646,6 @@ async def list_users():
 async def health_check():
     """API 健康检查端点"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-
-
-# ============================================
-# 前端静态文件服务
-# ============================================
-
-# 获取项目根目录
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-
-# 如果 static 目录存在，则挂载静态文件服务
-if os.path.exists(STATIC_DIR):
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    
-    @app.get("/", include_in_schema=False)
-    async def serve_frontend():
-        """提供前端看板页面"""
-        mainweb_path = os.path.join(STATIC_DIR, "mainweb.html")
-        if os.path.exists(mainweb_path):
-            return FileResponse(mainweb_path)
-        return {"message": "前端页面未找到，请查看 /api/docs 使用 API"}
-else:
-    # 尝试从根目录查找 mainweb.html
-    root_mainweb = os.path.join(BASE_DIR, "mainweb.html")
-    if os.path.exists(root_mainweb):
-        @app.get("/", include_in_schema=False)
-        async def serve_frontend():
-            """提供前端看板页面"""
-            return FileResponse(root_mainweb)
 
 
 # ============================================
