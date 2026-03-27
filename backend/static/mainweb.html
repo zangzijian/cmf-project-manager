@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMF 项目管理看板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        dark: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                        },
+                        glass: {
+                            100: 'rgba(255, 255, 255, 0.05)',
+                            200: 'rgba(255, 255, 255, 0.1)',
+                            border: 'rgba(255, 255, 255, 0.1)',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #050505;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .glass-card {
+            background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1); 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.2); 
+        }
+
+        .risk-badge {
+            position: relative;
+            overflow: hidden;
+        }
+        .risk-badge::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
+            transform: translateX(-100%);
+            animation: shimmer 2s infinite;
+        }
+        @keyframes shimmer {
+            100% { transform: translateX(100%); }
+        }
+
+        .timeline-dot {
+            position: relative;
+        }
+        .timeline-dot.active::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px; height: 8px;
+            background-color: #38bdf8;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #38bdf8;
+        }
+
+        /* 时间指示器颜色渐变 */
+        .time-indicator {
+            transition: background-color 1s ease;
+        }
+
+        /* 悬浮按钮动画 */
+        .fab-button {
+            animation: pulse-glow 2s infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(34, 211, 238, 0.4); }
+            50% { box-shadow: 0 0 30px rgba(34, 211, 238, 0.7); }
+        }
+
+        /* 删除按钮 hover 效果 */
+        .delete-btn {
+            opacity: 0;
+            transition: all 0.2s ease;
+        }
+        .glass-card:hover .delete-btn {
+            opacity: 1;
+        }
+        .delete-btn:hover {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-cyan-500 selection:text-white">
+
+    <!-- 背景装饰光斑 -->
+    <div class="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-900/20 rounded-full blur-[100px]"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[100px]"></div>
+    </div>
+
+    <div class="max-w-[1600px] mx-auto p-4 md:p-6 lg:p-8">
+        
+        <!-- 顶部导航栏 -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 glass-panel rounded-2xl p-4">
+            <div class="flex items-center gap-4">
+                <div>
+                    <h1 class="text-xl font-bold text-white tracking-tight">项目全景看板</h1>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-6">
+                <div class="hidden md:flex items-center gap-2 text-sm text-slate-400 bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                    <i class="far fa-calendar-alt"></i>
+                    <span id="current-date">2023 年 10 月 24 日 星期二</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+                        <i class="far fa-bell text-slate-300"></i>
+                    </button>
+                    <!-- 圆形时间指示器 -->
+                    <div id="time-indicator" class="time-indicator w-10 h-10 rounded-full border-2 border-slate-700 flex items-center justify-center text-xs font-bold text-white shadow-lg">
+                        <span id="time-display">14:30</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主布局网格 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- 左侧：项目看板 (占 9 列) -->
+            <main class="lg:col-span-9 space-y-6">
+                
+                <!-- 项目卡片 1: 高风险 -->
+                <div class="glass-card rounded-2xl p-5 relative overflow-hidden group">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-transparent opacity-80"></div>
+                    
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                        <div class="flex items-center gap-3">
+                            <span class="px-2 py-1 rounded bg-slate-800 text-xs font-mono text-slate-400 border border-slate-700">PJ-2023-X1</span>
+                            <h2 class="text-lg font-bold text-white group-hover:text-cyan-400 transition-colors">Flagship Phone Unibody</h2>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> 高风险
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-400">PM:</span>
+                                <span class="text-white font-medium">Alex Chen</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-400">当前阶段:</span>
+                                <span class="text-cyan-400 font-bold">T1</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 部件列表表格 -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-xs text-slate-500 border-b border-white/5">
+                                    <th class="pb-3 font-medium pl-2">部件名称 / 结构</th>
+                                    <th class="pb-3 font-medium">主供应商</th>
+                                    <th class="pb-3 font-medium">二供 / 备选</th>
+                                    <th class="pb-3 font-medium">进度备注</th>
+                                    <th class="pb-3 font-medium text-right pr-2">风险状态</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <!-- 部件 1 -->
+                                <tr class="group/row hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                                    <td class="py-3 pl-2">
+                                        <div class="font-medium text-slate-200">A 面铝合金中框</div>
+                                        <div class="text-xs text-slate-500 mt-0.5">CNC + 阳极氧化</div>
+                                    </td>
+                                    <td class="py-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-slate-300">Foxconn</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 text-slate-500">
+                                        Luxshare
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-xs text-amber-400">
+                                            <i class="fas fa-exclamation-circle mr-1"></i>模具修改中，预计延期 3 天
+                                        </span>
+                                    </td>
+                                    <td class="py-3 text-right pr-2">
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20 risk-badge">
+                                            <i class="fas fa-exclamation-triangle"></i> 延期风险
+                                        </span>
+                                    </td>
+                                </tr>
+                                <!-- 部件 2 -->
+                                <tr class="group/row hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                                    <td class="py-3 pl-2">
+                                        <div class="font-medium text-slate-200">摄像头装饰圈</div>
+                                        <div class="text-xs text-slate-500 mt-0.5">PVD 镀膜</div>
+                                    </td>
+                                    <td class="py-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-slate-300">BYD</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 text-slate-500">
+                                        -
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-xs text-cyan-400">
+                                            <i class="fas fa-info-circle mr-1"></i>新颜色样板确认中
+                                        </span>
+                                    </td>
+                                    <td class="py-3 text-right pr-2">
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                            <i class="fas fa-flask"></i> 工艺风险
+                                        </span>
+                                    </td>
+                                </tr>
+                                <!-- 部件 3 -->
+                                <tr class="group/row hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                                    <td class="py-3 pl-2">
+                                        <div class="font-medium text-slate-200">玻璃后盖 (AG)</div>
+                                        <div class="text-xs text-slate-500 mt-0.5">热弯 + 丝印</div>
+                                    </td>
+                                    <td class="py-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-slate-300">Lens Tech</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 text-slate-500">
+                                        Biel
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-xs text-emerald-400">
+                                            <i class="fas fa-check mr-1"></i>首批样品已签收
+                                        </span>
+                                    </td>
+                                    <td class="py-3 text-right pr-2">
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <i class="fas fa-check-circle"></i> 正常
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 底部时间轴 -->
+                    <div class="mt-5 pt-4 border-t border-white/5">
+                        <div class="flex justify-between items-center text-xs text-slate-500 mb-2">
+                            <span>项目时间轴</span>
+                            <span class="text-cyan-400">Next: T2 (11/15)</span>
+                        </div>
+                        <div class="relative flex items-center justify-between">
+                            <div class="absolute left-0 top-1/2 w-full h-0.5 bg-slate-800 -z-10 rounded"></div>
+                            <div class="absolute left-0 top-1/2 w-[45%] h-0.5 bg-gradient-to-r from-cyan-600 to-cyan-400 -z-10 rounded"></div>
+                            
+                            <div class="timeline-dot flex flex-col items-center gap-1 cursor-pointer group/tl">
+                                <div class="w-3 h-3 rounded-full bg-slate-700 border-2 border-slate-900 group-hover/tl:scale-125 transition-transform"></div>
+                                <span class="text-[10px]">手板</span>
+                                <span class="text-[9px] text-slate-600">09/01</span>
+                            </div>
+                            <div class="timeline-dot active flex flex-col items-center gap-1 cursor-pointer group/tl">
+                                <div class="w-3 h-3 rounded-full bg-cyan-500 border-2 border-slate-900 shadow-[0_0_10px_rgba(34,211,238,0.5)]"></div>
+                                <span class="text-[10px] text-cyan-400 font-bold">T1</span>
+                                <span class="text-[9px] text-slate-600">10/20</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 cursor-pointer group/tl">
+                                <div class="w-3 h-3 rounded-full bg-slate-700 border-2 border-slate-900 group-hover/tl:scale-125 transition-transform"></div>
+                                <span class="text-[10px]">T2</span>
+                                <span class="text-[9px] text-slate-600">11/15</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 cursor-pointer group/tl">
+                                <div class="w-3 h-3 rounded-full bg-slate-700 border-2 border-slate-900 group-hover/tl:scale-125 transition-transform"></div>
+                                <span class="text-[10px]">DVT</span>
+                                <span class="text-[9px] text-slate-600">12/01</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 cursor-pointer group/tl">
+                                <div class="w-3 h-3 rounded-full bg-slate-700 border-2 border-slate-900 group-hover/tl:scale-125 transition-transform"></div>
+                                <span class="text-[10px]">PVT</span>
+                                <span class="text-[9px] text-slate-600">01/10</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 cursor-pointer group/tl">
+                                <div class="w-3 h-3 rounded-full bg-slate-700 border-2 border-slate-900 group-hover/tl:scale-125 transition-transform"></div>
+                                <span class="text-[10px]">MP</span>
+                                <span class="text-[9px] text-slate-600">02/01</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 项目卡片 2: 正常 -->
+                <div class="glass-card rounded-2xl p-5 relative overflow-hidden group">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80"></div>
+                    
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                        <div class="flex items-center gap-3">
+                            <span class="px-2 py-1 rounded bg-slate-800 text-xs font-mono text-slate-400 border border-slate-700">PJ-2023-W2</span>
+                            <h2 class="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">Smart Watch Band - Leather</h2>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                进度正常
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-400">PM:</span>
+                                <span class="text-white font-medium">Sarah Li</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-400">当前阶段:</span>
+                                <span class="text-emerald-400 font-bold">DVT</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-xs text-slate-500 border-b border-white/5">
+                                    <th class="pb-3 font-medium pl-2">部件名称 / 结构</th>
+                                    <th class="pb-3 font-medium">主供应商</th>
+                                    <th class="pb-3 font-medium">二供 / 备选</th>
+                                    <th class="pb-3 font-medium">进度备注</th>
+                                    <th class="pb-3 font-medium text-right pr-2">风险状态</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <tr class="group/row hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                                    <td class="py-3 pl-2">
+                                        <div class="font-medium text-slate-200">真皮表带 (小牛皮)</div>
+                                        <div class="text-xs text-slate-500 mt-0.5">缝制 + 油边</div>
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-slate-300">Hermès Supplier A</span>
+                                    </td>
+                                    <td class="py-3 text-slate-500">
+                                        Local Leather Co.
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-xs text-emerald-400">
+                                            <i class="fas fa-check mr-1"></i>大货生产进行中
+                                        </span>
+                                    </td>
+                                    <td class="py-3 text-right pr-2">
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <i class="fas fa-check-circle"></i> 正常
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr class="group/row hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                                    <td class="py-3 pl-2">
+                                        <div class="font-medium text-slate-200">不锈钢扣具</div>
+                                        <div class="text-xs text-slate-500 mt-0.5">316L 精铸 + 抛光</div>
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-slate-300">Shenzhen Metal</span>
+                                    </td>
+                                    <td class="py-3 text-slate-500">
+                                        -
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-xs text-cyan-400">
+                                            <i class="fas fa-info-circle mr-1"></i>等待表面处理确认
+                                        </span>
+                                    </td>
+                                    <td class="py-3 text-right pr-2">
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <i class="fas fa-check-circle"></i> 正常
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 底部时间轴 -->
+                    <div class="mt-5 pt-4 border-t border-white/5">
+                        <div class="relative flex items-center justify-between">
+                            <div class="absolute left-0 top-1/2 w-full h-0.5 bg-slate-800 -z-10 rounded"></div>
+                            <div class="absolute left-0 top-1/2 w-[70%] h-0.5 bg-gradient-to-r from-emerald-600 to-emerald-400 -z-10 rounded"></div>
+                            
+                            <div class="timeline-dot flex flex-col items-center gap-1 opacity-50">
+                                <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                                <span class="text-[9px]">手板</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 opacity-50">
+                                <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                                <span class="text-[9px]">T0</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 opacity-50">
+                                <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                                <span class="text-[9px]">T1</span>
+                            </div>
+                            <div class="timeline-dot active flex flex-col items-center gap-1">
+                                <div class="w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                                <span class="text-[10px] text-emerald-400 font-bold">DVT</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 opacity-50">
+                                <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                                <span class="text-[9px]">PVT</span>
+                            </div>
+                            <div class="timeline-dot flex flex-col items-center gap-1 opacity-50">
+                                <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                                <span class="text-[9px]">MP</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+
+            <!-- 右侧：当日待办 (占 3 列) -->
+            <aside class="lg:col-span-3 space-y-6">
+                
+                <!-- 待办标题 -->
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider">今日待处理</h3>
+                    <span class="text-xs bg-white/10 px-2 py-0.5 rounded text-slate-400">4 项</span>
+                </div>
+
+                <!-- 待办列表 -->
+                <div class="space-y-3">
+                    
+                    <!-- 待办卡片 1 -->
+                    <div class="glass-card p-4 rounded-xl border-l-4 border-l-red-500 cursor-pointer hover:bg-white/5 transition-colors relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 rounded">PJ-2023-X1</span>
+                            <span class="text-[10px] text-red-400 font-bold">P0 紧急</span>
+                        </div>
+                        <p class="text-sm text-slate-200 font-medium mb-2">确认 A 面中框阳极色差限度样</p>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <div class="flex items-center gap-1">
+                                <i class="far fa-clock"></i>
+                                <span>今日 14:00 前</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="flex -space-x-2">
+                                    <div class="w-5 h-5 rounded-full bg-slate-700 border border-slate-900 flex items-center justify-center text-[8px]">A</div>
+                                </div>
+                                <!-- 删除按钮 -->
+                                <button class="delete-btn w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors" title="删除任务">
+                                    <i class="far fa-trash-alt text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 待办卡片 2 -->
+                    <div class="glass-card p-4 rounded-xl border-l-4 border-l-amber-500 cursor-pointer hover:bg-white/5 transition-colors relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 rounded">PJ-2023-X1</span>
+                            <span class="text-[10px] text-amber-400 font-bold">P1 重要</span>
+                        </div>
+                        <p class="text-sm text-slate-200 font-medium mb-2">审核摄像头圈 PVD 新工艺报告</p>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <div class="flex items-center gap-1">
+                                <i class="far fa-clock"></i>
+                                <span>今日 17:00 前</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="flex -space-x-2">
+                                    <div class="w-5 h-5 rounded-full bg-slate-700 border border-slate-900 flex items-center justify-center text-[8px]">A</div>
+                                    <div class="w-5 h-5 rounded-full bg-slate-600 border border-slate-900 flex items-center justify-center text-[8px]">S</div>
+                                </div>
+                                <!-- 删除按钮 -->
+                                <button class="delete-btn w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors" title="删除任务">
+                                    <i class="far fa-trash-alt text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 待办卡片 3 -->
+                    <div class="glass-card p-4 rounded-xl border-l-4 border-l-cyan-500 cursor-pointer hover:bg-white/5 transition-colors relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 rounded">PJ-2023-W2</span>
+                            <span class="text-[10px] text-cyan-400 font-bold">P2 常规</span>
+                        </div>
+                        <p class="text-sm text-slate-200 font-medium mb-2">签署表带大货生产同意书 (PPAP)</p>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <div class="flex items-center gap-1">
+                                <i class="far fa-clock"></i>
+                                <span>明日 10:00 前</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="flex -space-x-2">
+                                    <div class="w-5 h-5 rounded-full bg-purple-900 border border-slate-900 flex items-center justify-center text-[8px]">S</div>
+                                </div>
+                                <!-- 删除按钮 -->
+                                <button class="delete-btn w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors" title="删除任务">
+                                    <i class="far fa-trash-alt text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 待办卡片 4 -->
+                    <div class="glass-card p-4 rounded-xl border-l-4 border-l-slate-600 cursor-pointer hover:bg-white/5 transition-colors opacity-70 hover:opacity-100 relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 rounded">General</span>
+                            <span class="text-[10px] text-slate-400">P3 低优</span>
+                        </div>
+                        <p class="text-sm text-slate-400 font-medium mb-2 line-through">更新供应商联络人列表</p>
+                        <div class="flex items-center justify-between text-xs text-slate-600">
+                            <span>已完成</span>
+                            <!-- 删除按钮 -->
+                            <button class="delete-btn w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors" title="删除任务">
+                                <i class="far fa-trash-alt text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 快速统计小卡片 -->
+                <div class="grid grid-cols-2 gap-3 mt-6">
+                    <div class="glass-card p-3 rounded-xl text-center">
+                        <div class="text-2xl font-bold text-white">12</div>
+                        <div class="text-[10px] text-slate-400 uppercase">进行中项目</div>
+                    </div>
+                    <div class="glass-card p-3 rounded-xl text-center">
+                        <div class="text-2xl font-bold text-red-400">3</div>
+                        <div class="text-[10px] text-slate-400 uppercase">高风险部件</div>
+                    </div>
+                </div>
+
+            </aside>
+        </div>
+    </div>
+
+    <!-- 右下角悬浮添加按钮 -->
+    <button class="fab-button fixed bottom-8 right-8 w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform z-50" title="添加新项目">
+        <i class="fas fa-plus text-xl"></i>
+    </button>
+
+    <!-- JavaScript: 时间指示器 -->
+    <script>
+        function updateTimeIndicator() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            
+            // 更新时间显示
+            document.getElementById('time-display').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            
+            // 计算颜色渐变 (从深蓝到明黄，基于小时)
+            // 0-6点：深蓝色，6-12点：渐变到青色，12-18点：渐变到黄色，18-24点：渐变回深蓝
+            let hue, saturation, lightness;
+            
+            if (hours >= 6 && hours < 12) {
+                // 早晨：深蓝 -> 青蓝
+                const progress = (hours - 6) / 6 + minutes / 360;
+                hue = 220 + progress * 40; // 220 (蓝) -> 260 (青)
+                saturation = 70 + progress * 20;
+                lightness = 45 + progress * 15;
+            } else if (hours >= 12 && hours < 18) {
+                // 下午：青蓝 -> 明黄
+                const progress = (hours - 12) / 6 + minutes / 360;
+                hue = 260 + progress * 100; // 260 (青) -> 360/0 (黄)
+                saturation = 90 - progress * 30;
+                lightness = 60 + progress * 10;
+            } else if (hours >= 18 && hours < 24) {
+                // 傍晚：明黄 -> 深蓝
+                const progress = (hours - 18) / 6 + minutes / 360;
+                hue = 0 + progress * 220; // 0 (黄) -> 220 (蓝)
+                saturation = 60 + progress * 30;
+                lightness = 70 - progress * 25;
+            } else {
+                // 深夜：保持深蓝
+                hue = 220;
+                saturation = 70;
+                lightness = 35;
+            }
+            
+            const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            document.getElementById('time-indicator').style.backgroundColor = color;
+            
+            // 更新边框颜色
+            const borderLightness = lightness - 20;
+            document.getElementById('time-indicator').style.borderColor = `hsl(${hue}, ${saturation}%, ${Math.max(borderLightness, 20)}%)`;
+        }
+
+        // 初始化并每分钟更新
+        updateTimeIndicator();
+        setInterval(updateTimeIndicator, 60000);
+
+        // 更新日期显示
+        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN', dateOptions);
+
+        // 删除按钮交互（演示用）
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const card = this.closest('.glass-card');
+                card.style.opacity = '0';
+                card.style.transform = 'translateX(20px)';
+                setTimeout(() => {
+                    card.style.display = 'none';
+                }, 300);
+            });
+        });
+
+        // 悬浮按钮交互（演示用）
+        document.querySelector('.fab-button').addEventListener('click', function() {
+            alert('添加新项目功能 - 此处可连接弹窗或新页面');
+        });
+    </script>
+</body>
+</html>
