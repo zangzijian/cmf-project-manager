@@ -1,0 +1,19 @@
+[Unit]
+Description=CMF Supply Chain Management System
+After=network.target
+
+[Service]
+Type=notify
+User=root
+WorkingDirectory=/opt/cmf-scm
+Environment="PATH=/opt/cmf-scm/venv/bin"
+Environment="PYTHONPATH=/opt/cmf-scm"
+ExecStart=/opt/cmf-scm/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cmf-scm
+
+[Install]
+WantedBy=multi-user.target
