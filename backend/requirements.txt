@@ -1,0 +1,5 @@
+# CMF SCM System v2.0 - 零外部依赖版本
+# 仅需 FastAPI 和 Uvicorn
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
