@@ -33,15 +33,26 @@ pip install fastapi uvicorn
 
 ### 启动服务
 
+**重要**: 确保项目包含 `__init__.py` 文件以支持模块导入。
+
+```bash
+# 检查并确保以下文件存在（如不存在请创建空文件）：
+touch backend/__init__.py
+touch backend/src/__init__.py
+```
+
+启动方式一（推荐 - 在项目根目录）：
+
+```bash
+cd /workspace
+uvicorn backend.src.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+启动方式二（直接在 src 目录）：
+
 ```bash
 cd backend/src
 python app.py
-```
-
-或使用 uvicorn 直接启动：
-
-```bash
-uvicorn backend.src.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 访问 API 文档
@@ -196,23 +207,57 @@ def get_mock_data():
 
 ## 🚢 部署方案
 
-### 方案 A: 直接运行
+### 方案 A: 一键脚本 (推荐)
 
 ```bash
-pip install fastapi uvicorn
-python backend/src/app.py
+# 赋予执行权限
+chmod +x install.sh
+
+# 运行安装脚本
+./install.sh
 ```
 
-### 方案 B: Docker 部署
+脚本将自动完成：
+1. 检查系统依赖 (Python3, pip)
+2. 创建 Python 包结构 (`__init__.py`)
+3. 创建虚拟环境
+4. 安装依赖 (FastAPI + Uvicorn)
+5. 配置环境变量
+6. 验证安装
+7. 配置 systemd 服务 (可选，需 root)
+
+### 方案 B: 手动部署
 
 ```bash
+# 1. 创建包初始化文件 (解决 ModuleNotFoundError)
+touch backend/__init__.py
+touch backend/src/__init__.py
+
+# 2. 安装依赖
+pip install fastapi uvicorn pydantic
+
+# 3. 启动服务 (在项目根目录)
+cd /workspace
+uvicorn backend.src.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 方案 C: Docker 部署
+
+```bash
+cd deployment
 docker-compose up -d
 ```
 
-### 方案 C: 一键脚本 (待实现)
+### 防火墙配置
 
 ```bash
-./deploy/install.sh
+# Ubuntu
+sudo ufw allow 8000/tcp
+
+# CentOS
+sudo firewall-cmd --permanent --add-port=8000/tcp && sudo firewall-cmd --reload
+
+# 阿里云/腾讯云：在安全组中开放 8000 端口
 ```
 
 ---

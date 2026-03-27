@@ -1,54 +1,43 @@
-```gitignore
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Build artifacts
-build/
-dist/
-*.egg
-*.egg-info/
+*.py[cod]
+*$py.class
 *.so
+.Python
+venv/
+ENV/
+env/
+.venv
 
-# Testing
-.coverage
-coverage/
-htmlcov/
-.nyc_output/
-.mypy_cache/
-.pytest_cache/
-.tox/
-
-# Logs
-*.log
-
-# Environment variables
+# Environment
 .env
 .env.local
-*.env*
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
+*~
 
 # OS
 .DS_Store
 Thumbs.db
-```
 
-Wait, let me reconsider. The only files in the change list are `README.md` and `backend/src/app.py`, which are source/config files. There are no build artifacts, dependencies, or temporary files in the change list.
+# Logs
+*.log
+logs/
 
-(empty)
+# Database (v1.0 only, v2.0 uses memory)
+*.db
+*.sqlite
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
